@@ -2,6 +2,7 @@ package geecache
 
 import (
 	"fmt"
+	"geecache/GeeCache/singleflight"
 	"log"
 	"sync"
 )
@@ -28,6 +29,9 @@ type Group struct {
 	getter    Getter
 	mainCache cache
 	peers     PeerPicker
+	// use singleflight.Group to make sure that
+	// each key is only fetched once
+	loader *singleflight.Group
 }
 
 var (
@@ -47,8 +51,10 @@ func NewGroup(name string, cacheBytes int64, getter Getter) *Group {
 		name:      name,   // 唯一名称
 		getter:    getter, // 缓存未命中时获取源数据的回调
 		mainCache: cache{cacheBytes: cacheBytes},
+		// day6 add:
+		loader: &singleflight.Group{},
 	}
-	groups[name] = g
+	// groups[name] = g
 	return g
 }
 
@@ -92,16 +98,26 @@ func (g *Group) RegisterPeers(peers PeerPicker) {
 // 若非本机节点，则调用getFromPeer()从远程获取
 // 若是本机节点或失败，则回退到getLocally()
 func (g *Group) load(key string) (value ByteView, err error) {
-	if g.peers != nil {
-		if peer, ok := g.peers.PickPeer(key); ok {
-			if value, err = g.getFromPeer(peer, key); err == nil {
-				return value, nil
+	// each key is only fetched once (either locally or remotely)
+	// regardless of the number of concurrent callers.
+	viewi, err := g.loader.Do(key, func() (interface{}, error) {
+		if g.peers != nil {
+			if peer, ok := g.peers.PickPeer(key); ok {
+				if value, err = g.getFromPeer(peer, key); err == nil {
+					return value, nil
+				}
+				log.Println("[GeeCache] Failed to get from peer", err)
 			}
-			log.Println("[GeeCache] Failed to get from peer", err)
 		}
+
+		// 修改前代码:
+		return g.getLocally(key)
+	})
+
+	if err == nil {
+		return viewi.(ByteView), nil
 	}
-	// 修改前代码:
-	return g.getLocally(key)
+	return
 }
 
 // 使用实现了PeerGetter接口的httpGetter访问远程节点，获取缓存值
