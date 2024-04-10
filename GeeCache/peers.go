@@ -1,5 +1,7 @@
 package geecache
 
+import pb "geecache/geecache/geecachepb"
+
 // PeerPicker is the interface that must be implemented to locate
 // the peer than owns a specific key.
 type PeerPicker interface {
@@ -7,6 +9,12 @@ type PeerPicker interface {
 }
 
 // PeerGetter is the interface that must be implemented by a peer.
+
+// day7 updated PeerGetter interface
+// type PeerGetter interface {
+// 	Get(group string, key string) ([]byte, error) // 从对应group中查找缓存值
+// }
+
 type PeerGetter interface {
-	Get(group string, key string) ([]byte, error) // 从对应group中查找缓存值
+	Get(in *pb.Request, out *pb.Response) error
 }

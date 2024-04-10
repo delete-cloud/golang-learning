@@ -3,12 +3,15 @@ package geecache
 import (
 	"fmt"
 	"geecache/geecache/consistenthash"
+	pb "geecache/geecache/geecachepb"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
+
+	"github.com/golang/protobuf/proto"
 )
 
 const (
@@ -31,7 +34,7 @@ type HTTPPool struct {
 	// keyed by e.g. "http://10.0.0.2:8008"
 }
 
-func (h *httpGetter) Get(group string, key string) ([]byte, error) {
+func (h *httpGetter) Get(group string, key string) error {
 	u := fmt.Sprintf(
 		"%v%v/%v",
 		h.baseURL,
@@ -39,21 +42,28 @@ func (h *httpGetter) Get(group string, key string) ([]byte, error) {
 		url.QueryEscape(key),
 	)
 	res, err := http.Get(u)
+
+	// day7 updated
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("server returned: %v", res.Status)
+		return fmt.Errorf("server returned: %v", res.Status)
 	}
 
 	bytes, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		return nil, fmt.Errorf("reading response body: %v", err)
+		return fmt.Errorf("reading response body: %v", err)
 	}
 
-	return bytes, nil
+	if err = proto.Unmarshal(bytes, out); err != nil {
+		return fmt.Errorf("decoding response body: %v", err)
+	}
+
+	return nil
+	// return bytes, nil
 }
 
 var _PeerGetter = (*httpGetter)(nil)
@@ -99,8 +109,17 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// day7 updated
+	// w.Header().Set("Content-Type", "application/octet-stream")
+	// w.Write(view.ByteSlice()) // 将缓存值作为httpResponse的body返回
+
+	// Write the value to the response body as a proto message.
+	body, err := proto.Marshal(&pb.Response{Value: view.ByteSlice()})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Write(view.ByteSlice()) // 将缓存值作为httpResponse的body返回
+	w.Write(body)
 }
 
 // Set()方法实例化了一致性哈希算法，并添加传入的节点
