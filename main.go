@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"geecache/geecache"
+	"geecache"
 	"log"
 	"net/http"
 )

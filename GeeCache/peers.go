@@ -1,6 +1,6 @@
 package geecache
 
-import pb "geecache/geecache/geecachepb"
+import pb "geecache/geecachepb"
 
 // PeerPicker is the interface that must be implemented to locate
 // the peer than owns a specific key.

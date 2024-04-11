@@ -2,8 +2,8 @@ package geecache
 
 import (
 	"fmt"
-	"geecache/geecache/consistenthash"
-	pb "geecache/geecache/geecachepb"
+	"geecache/consistenthash"
+	pb "geecache/geecachepb"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -34,12 +34,12 @@ type HTTPPool struct {
 	// keyed by e.g. "http://10.0.0.2:8008"
 }
 
-func (h *httpGetter) Get(group string, key string) error {
+func (h *httpGetter) Get(in *pb.Request, out *pb.Response) error {
 	u := fmt.Sprintf(
 		"%v%v/%v",
 		h.baseURL,
-		url.QueryEscape(group),
-		url.QueryEscape(key),
+		url.QueryEscape(in.GetGroup()),
+		url.QueryEscape(in.GetKey()),
 	)
 	res, err := http.Get(u)
 
