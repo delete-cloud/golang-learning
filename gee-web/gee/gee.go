@@ -3,7 +3,9 @@ package gee
 import (
 	"log"
 	"net/http"
+	"path"
 	"strings"
+	"text/template"
 )
 
 // HandlerFunc defines the request handler used by gee
@@ -12,8 +14,10 @@ type HandlerFunc func(*Context)
 // Engine implement the interface of ServeHTTP
 type Engine struct {
 	*RouterGroup
-	router *router
-	groups []*RouterGroup // store all groups
+	router        *router
+	groups        []*RouterGroup     // store all groups
+	htmlTemplates *template.Template // for html render 将所有的模版加载进内存
+	funcMap       template.FuncMap   // for html render 所有的自定义模版渲染函数
 }
 
 type RouterGroup struct {
@@ -60,6 +64,31 @@ func (group *RouterGroup) POST(pattern string, handler HandlerFunc) {
 	group.addRoute("POST", pattern, handler)
 }
 
+// create static handler
+func (group *RouterGroup) createStaticHandler(relativePath string, fs http.FileSystem) HandlerFunc {
+	absolutePath := path.Join(group.prefix, relativePath)
+	fileServer := http.StripPrefix(absolutePath, http.FileServer(fs))
+	return func(c *Context) {
+		file := c.Param("filepath")
+		// Check if file exists and/or if we have permission to access it
+		if _, err := fs.Open(file); err != nil {
+			c.Status(http.StatusNotFound)
+			return
+		}
+
+		fileServer.ServeHTTP(c.Writer, c.Req)
+	}
+}
+
+// 暴露给用户的方法，用户可以将磁盘上的某个文件夹root映射到路由relativePath
+// serve static files
+func (group *RouterGroup) Static(relativePath string, root string) {
+	handler := group.createStaticHandler(relativePath, http.Dir(root))
+	urlPattern := path.Join(relativePath, "/*filepath")
+	// Register GET handlers
+	group.GET(urlPattern, handler)
+}
+
 // Run defines the method to start a http server
 func (engine *Engine) Run(addr string) (err error) {
 	return http.ListenAndServe(addr, engine)
@@ -82,5 +111,14 @@ func (engine *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	c := newContext(w, req)
 	c.handlers = middlewares
 	// handle函数中，将从路由匹配得到的Handler添加到c.handlers列表中。执行c.Next()
+	c.engine = engine
 	engine.router.handle(c)
+}
+
+func (engine *Engine) SetFuncMap(funcMap template.FuncMap) {
+	engine.funcMap = funcMap
+}
+
+func (engine *Engine) LoadHTMLGlob(pattern string) {
+	engine.htmlTemplates = template.Must(template.New("").Funcs(engine.funcMap).ParseGlob(pattern))
 }
